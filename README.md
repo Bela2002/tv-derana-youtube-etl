@@ -167,6 +167,10 @@ The ETL pipeline was tested through both manual and scheduled execution.
 
 <img width="1793" height="942" alt="daily_stats_data" src="https://github.com/user-attachments/assets/892767ca-6f06-4a53-9be0-e52d6d7ebd15" />
 
+### Test Execution
+
+<img width="1272" height="802" alt="Screenshot 2026-10-07 045711" src="https://github.com/user-attachments/assets/5a3ce858-9f79-434d-a060-18ae5f3ec555" />
+
 ### Automated Execution
 - Windows Task Scheduler was configured to execute the ETL pipeline daily at 8:00 AM.
 
