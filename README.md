@@ -152,22 +152,22 @@ The ETL pipeline was tested through both manual and scheduled execution.
 - Python ETL executed successfully through the VS Code terminal.
 - Extracted YouTube data was transformed and loaded into PostgreSQL.
 
-![manual_etl_run (MAX_VIDEOS_PER_RUN=100)](<01_manual_etl_run (MAX_VIDEOS_PER_RUN=100).png>)
+<img width="747" height="478" alt="01_manual_etl_run (MAX_VIDEOS_PER_RUN=100)" src="https://github.com/user-attachments/assets/8ab7dde7-30c4-47ed-b603-103c9fba0885" />
 
-![manual_etl_run (MAX_VIDEOS_PER_RUN=)](<06_manual_etl_run (MAX_VIDEOS_PER_RUN=).png>)
+<img width="767" height="427" alt="06_manual_etl_run (MAX_VIDEOS_PER_RUN=)" src="https://github.com/user-attachments/assets/29d82a7c-d41a-4df8-85f0-667674aa12d3" />
 
 ### Database Validation
 - PostgreSQL queries were used to verify the number of records and stored video data.
 
-![database_video_count](database_video_count.png)
+<img width="1790" height="947" alt="database_video_count" src="https://github.com/user-attachments/assets/2b4967c3-fedf-4a28-b337-c09df3983be3" />
 
-![database_video_data](database_video_data.png)
+<img width="1782" height="941" alt="database_video_data" src="https://github.com/user-attachments/assets/102e6784-911f-415c-b520-d3910fa0da3c" />
 
-![daily_stats_query](daily_stats_query.png)
+<img width="1792" height="945" alt="daily_stats_query" src="https://github.com/user-attachments/assets/70d31bad-1eb5-4162-b2ef-d802680d38bd" />
 
-![daily_stats_data](daily_stats_data.png)
+<img width="1793" height="942" alt="daily_stats_data" src="https://github.com/user-attachments/assets/892767ca-6f06-4a53-9be0-e52d6d7ebd15" />
 
 ### Automated Execution
 - Windows Task Scheduler was configured to execute the ETL pipeline daily at 8:00 AM.
 
-![task_scheduler_configuration](05_task_scheduler_configuration.png)
+<img width="857" height="607" alt="05_task_scheduler_configuration" src="https://github.com/user-attachments/assets/c148c54a-27bd-4f7e-864d-d20bec0a281a" />
