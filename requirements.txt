@@ -1,0 +1,4 @@
+requests>=2.32,<3  #communicates with YouTube API
+python-dotenv>=1.0,<2  #loads environment variables from a .env file ( securely reads .env )
+psycopg2-binary>=2.9,<3  #PostgreSQL database adapter ( connects Python to PostgreSQL )
+pytest>=8,<9  #testing framework (automated testing )
