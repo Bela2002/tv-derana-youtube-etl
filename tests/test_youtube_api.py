@@ -92,7 +92,7 @@ def test_get_uploads_playlist_id_when_channel_not_found(
 
     with pytest.raises(
         YouTubeAPIError,
-        match="No YouTube channel found",
+        match="No YouTube channel was found",
     ):
         client.get_uploads_playlist_id(
             "INVALID_CHANNEL"
@@ -280,7 +280,7 @@ def test_api_http_error(monkeypatch):
 
     with pytest.raises(
         YouTubeAPIError,
-        match="HTTP 400",
+        match="HTTP status: 400",
     ):
         client.get_uploads_playlist_id(
             "CHANNEL_123"
@@ -302,7 +302,7 @@ def test_api_network_error(monkeypatch):
 
     with pytest.raises(
         YouTubeAPIError,
-        match="Network error",
+        match="network error",
     ):
         client.get_uploads_playlist_id(
             "CHANNEL_123"
@@ -331,3 +331,90 @@ def test_api_invalid_json(monkeypatch):
         client.get_uploads_playlist_id(
             "CHANNEL_123"
         )
+
+
+def test_api_retries_temporary_server_error(monkeypatch):
+    client = YouTubeAPIClient("TEST_API_KEY")
+    calls = {"count": 0}
+
+    def fake_get(url, params, timeout):
+        calls["count"] += 1
+
+        if calls["count"] < 3:
+            return FakeResponse(
+                json_data={"error": {"message": "Temporary error"}},
+                status_code=503,
+                ok=False,
+            )
+
+        return FakeResponse(json_data={"items": []})
+
+    monkeypatch.setattr(
+        "src.youtube_api.requests.get",
+        fake_get,
+    )
+    monkeypatch.setattr(
+        "src.youtube_api.time.sleep",
+        lambda seconds: None,
+    )
+
+    result = client._get(
+        "channels",
+        {"part": "contentDetails"},
+    )
+
+    assert result == {"items": []}
+    assert calls["count"] == 3
+
+
+def test_api_does_not_expose_key_after_network_failures(monkeypatch):
+    secret_key = "SECRET_TEST_API_KEY"
+    client = YouTubeAPIClient(secret_key)
+
+    def fake_get(url, params, timeout):
+        raise requests.ConnectionError(
+            f"Failed URL: {url}?key={secret_key}"
+        )
+
+    monkeypatch.setattr(
+        "src.youtube_api.requests.get",
+        fake_get,
+    )
+    monkeypatch.setattr(
+        "src.youtube_api.time.sleep",
+        lambda seconds: None,
+    )
+
+    with pytest.raises(YouTubeAPIError) as exc_info:
+        client._get(
+            "channels",
+            {"part": "contentDetails"},
+        )
+
+    assert secret_key not in str(exc_info.value)
+
+
+def test_api_does_not_retry_permanent_http_error(monkeypatch):
+    client = YouTubeAPIClient("TEST_API_KEY")
+    calls = {"count": 0}
+
+    def fake_get(url, params, timeout):
+        calls["count"] += 1
+        return FakeResponse(
+            json_data={"error": {"message": "Invalid API key"}},
+            status_code=400,
+            ok=False,
+        )
+
+    monkeypatch.setattr(
+        "src.youtube_api.requests.get",
+        fake_get,
+    )
+
+    with pytest.raises(YouTubeAPIError):
+        client._get(
+            "channels",
+            {"part": "contentDetails"},
+        )
+
+    assert calls["count"] == 1

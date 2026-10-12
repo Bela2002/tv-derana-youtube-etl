@@ -16,6 +16,12 @@ The uploads playlist is then paginated to retrieve video IDs.
 The video IDs are processed in batches to retrieve video metadata
 and statistics.
 
+### API Reliability
+
+The API client retries selected temporary network failures and HTTP errors using exponential delays. Permanent HTTP errors are not repeatedly retried. Custom API errors avoid including the raw request URL or response body to reduce the risk of exposing sensitive information.
+
+These measures improve resilience during extraction, although some failures still require investigation or manual intervention.
+
 ## 2. Transform
 
 The raw API responses are converted into structured records.

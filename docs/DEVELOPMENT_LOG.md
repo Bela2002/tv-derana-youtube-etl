@@ -189,35 +189,41 @@ Connect the Python application to the YouTube Data API v3 and retrieve TV Derana
 
 ### Implementation
 
-A dedicated `youtube_api.py` module was created.
+A dedicated `youtube_api.py` module was created to handle communication with the YouTube Data API v3.
 
 The API client is responsible for:
 
 1. Communicating with the YouTube API.
-2. Adding the API key to requests.
+2. Adding the API key to requests through environment-based configuration.
 3. Retrieving the channel's uploads playlist.
 4. Retrieving video IDs from the uploads playlist.
 5. Handling API pagination.
 6. Retrieving detailed video information.
 7. Handling HTTP, network, and invalid JSON errors.
+8. Retrying temporary network failures and selected HTTP errors.
+9. Raising custom API errors without including the raw request URL or response body in error messages.
 
-### Pagination
+### Retry Mechanism
 
-The YouTube API may return results across multiple pages.
+The API client was improved to retry temporary request failures.
 
-The implementation checks the API's `nextPageToken` and continues requesting pages until there are no more pages.
+The implementation uses a maximum of three retries after the initial attempt, with exponential delays of approximately 1, 2, and 4 seconds. Retryable HTTP status codes are `429`, `500`, `502`, `503`, and `504`. Network-related request exceptions are also retried.
 
-This prevents the extraction process from being limited to the first page of results.
+Permanent HTTP errors are not repeatedly retried. The current policy does not automatically retry every API error, including quota-related errors.
+
+### API Key Error Handling
+
+The error-handling logic was reviewed to reduce the risk of API-key exposure when requests fail. Custom error messages avoid including the raw request URL and response body, which may contain sensitive request details.
+
+A dedicated test simulates a network exception containing a secret value and verifies that the value is not exposed in the resulting custom API error.
 
 ### API Batch Processing
 
-Video details are requested in batches of up to 50 video IDs.
-
-This follows the API request structure and avoids attempting to send an unnecessarily large list of IDs in a single request.
+Video details are requested in batches of up to 50 video IDs. This follows the API request structure and avoids sending unnecessarily large lists of IDs in a single request.
 
 ### Result
 
-The project can retrieve the required YouTube video data through a dedicated API client.
+The API client now includes retry handling for selected temporary failures and tests for retry behaviour, permanent HTTP errors, and protection against exposing the API key in custom error messages.
 
 ---
 
@@ -580,6 +586,13 @@ A `.env.example` file was also created with placeholder values.
 
 Credentials are separated from the application source code and are excluded from Git version control.
 
+### Additional Security Validation
+
+The current log files were checked for an exact match of the configured API key, and no exact match was found. The Git index was also checked, and `.env` was not listed as a tracked file.
+
+These checks provide evidence that the key was not found in the inspected logs and is not currently tracked in the Git index. They do not, by themselves, prove that the key has never appeared in previous Git history or other files. A separate history review is required before making that broader claim.
+
+
 ---
 
 ## 7.2 Testing External API Communication
@@ -710,68 +723,109 @@ logs/etl.log
 
 The execution history can be reviewed after an automated run.
 
+## 7.8 Improving API Failure Recovery
+
+### Challenge
+
+A temporary network failure or server-side API error could interrupt an ETL execution. Because the pipeline is intended to collect data daily, repeated interruptions could affect collection reliability.
+
+### Solution
+
+A retry mechanism was added to `youtube_api.py`. It retries network-related request exceptions and selected temporary HTTP status codes, using exponential delays. Permanent HTTP errors are not repeatedly retried.
+
+Automated tests were added to verify that temporary failures are retried, permanent HTTP errors are not unnecessarily retried, and sensitive information is not exposed through custom API error messages.
+
+### Outcome
+
+The API client has improved handling of selected temporary failures. Recovery is not guaranteed for permanent errors, quota issues, or failures outside the configured retry policy.
+
 ---
 
-# 8. Testing and Validation
+## 7.9 Testing Against a Real PostgreSQL Test Database
 
-Automated unit testing was implemented using `pytest`.
+### Challenge
 
-The current test suite contains:
+Mock database objects are useful for unit tests, but they cannot fully validate PostgreSQL behaviour, including actual table constraints, foreign keys, and transaction failures.
 
-| Test File             |  Tests |
-| --------------------- | -----: |
-| `test_config.py`      |      7 |
-| `test_extract.py`     |      2 |
-| `test_load.py`        |      4 |
-| `test_transform.py`   |      5 |
-| `test_youtube_api.py` |      8 |
-| **Total**             | **26** |
+### Solution
 
-The complete test suite was executed using:
+A separate PostgreSQL database, `tv_derana_etl_test`, was created for database integration testing. A new test module, `tests/test_database_integration.py`, was added to exercise real database operations.
+
+The integration tests cover:
+
+- Database table initialization.
+- Updating an existing video through an upsert.
+- Inserting daily statistics.
+- Rejecting statistics for a nonexistent video through the foreign-key constraint.
+- Storing statistics for multiple snapshot dates for the same video.
+- Verifying that a failed statistics batch does not leave partial rows committed.
+
+The tests use dedicated test records and clean up test data where appropriate. They are configured to use the test database rather than the main database.
+
+### Outcome
+
+The new integration tests validate actual PostgreSQL behaviour instead of relying exclusively on mock database objects. Their final status should be recorded after the corrected test suite has been executed successfully.
+
+---
+
+## 8. Testing and Validation
+
+Automated testing is implemented using `pytest`. The test suite includes unit tests, main-pipeline tests, and PostgreSQL database integration tests.
+
+### Test Results
+
+The complete test suite was executed successfully.
+
+**Execution command:**
 
 ```powershell
-pytest
+pytest -v
 ```
 
-The result was:
+**Result:**
 
 ```text
-26 passed in 0.47s
+39 passed in 7.55s
 ```
+
+All 39 tests passed without failures.
+
+### Test Distribution
+
+| Test File | Tests |
+|---|---:|
+| `test_config.py` | 7 |
+| `test_database_integration.py` | 6 |
+| `test_extract.py` | 2 |
+| `test_load.py` | 4 |
+| `test_main.py` | 4 |
+| `test_transform.py` | 5 |
+| `test_youtube_api.py` | 11 |
+| **Total** | **39** |
 
 ### Tested Areas
 
-The test suite currently validates:
+The test suite validates:
 
-* Environment variable handling
-* Required configuration validation
-* Optional integer configuration
-* YouTube extraction workflow
-* Empty extraction results
-* Data transformation
-* Integer conversion
-* Date/time parsing
-* Database loading logic
-* Empty database loading
-* YouTube API pagination
-* YouTube API batching
-* API HTTP errors
-* Network errors
-* Invalid JSON responses
+- Configuration loading and validation.
+- YouTube API pagination and video-detail batching.
+- API HTTP errors, network errors, and invalid JSON responses.
+- Retry handling for selected temporary API failures.
+- Prevention of sensitive information appearing in custom API error messages.
+- Avoiding unnecessary retries for permanent HTTP errors.
+- Video extraction and empty extraction results.
+- Data transformation and numeric/date conversion.
+- Database loading operations.
+- Main-pipeline success, empty extraction, extraction failure, and connection cleanup when loading fails.
+- PostgreSQL table initialization, video upserts, daily-statistics upserts, foreign-key validation, multiple snapshot dates, and failed-batch transaction behaviour.
+
+### Database Integration Testing
+
+The six database integration tests use the separate PostgreSQL database `tv_derana_etl_test`. They verify actual PostgreSQL behaviour, including constraints and transaction handling, rather than relying exclusively on mocked database objects.
 
 ### Testing Principle
 
-The automated unit tests do not depend on the real YouTube API or real database modifications.
-
-Separate manual/end-to-end validation is used to verify the complete system with:
-
-```text
-Real YouTube API
-        ↓
-Real Python ETL
-        ↓
-Real PostgreSQL Database
-```
+The project combines automated unit tests, main-pipeline tests, PostgreSQL integration tests, and manual end-to-end validation. Together, these approaches provide broader coverage of individual components, pipeline orchestration, and database behaviour.
 
 ---
 
@@ -820,6 +874,12 @@ The following core components have been completed:
 * [x] Windows Task Scheduler configuration
 * [x] Manual end-to-end validation
 * [x] GitHub repository maintenance
+* [x]Environment-based configuration
+* [x] API error handling and retry mechanism for selected temporary failures
+* [x] API-key exposure checks in current log files
+* [x] Automated unit tests for API retry behaviour and safe custom errors
+* [x] PostgreSQL test database created for integration testing
+* [x] Database integration test module added
 
 ---
 
@@ -843,15 +903,19 @@ This is considered a future optimization rather than a current system failure.
 
 Potential improvements identified during development include:
 
-1. Implement incremental extraction to reduce unnecessary API requests.
-2. Add more database integration tests if required.
-3. Add additional data-quality validation.
-4. Improve retry handling for temporary API/network failures.
-5. Add more detailed execution metrics.
-6. Improve monitoring of scheduled ETL runs.
-7. Add automated database backup procedures if required.
-8. Add data analysis/reporting capabilities on top of the collected historical statistics.
-9. Improve documentation as additional requirements are introduced.
+# 12. Future Improvements
+
+Potential improvements identified during development include:
+
+1. Investigate the observed discrepancy between the playlist item count and the number of videos returned by the API.
+2. Implement incremental extraction to reduce unnecessary API requests while retaining historical backfill capability.
+3. Add dedicated automated tests for the complete main-pipeline orchestration.
+4. Extend data-quality validation.
+5. Improve monitoring of scheduled ETL runs and execution metrics.
+6. Add automated database backup procedures if required.
+7. Add data analysis and reporting capabilities using the collected historical statistics.
+8. Review Git history and other relevant repository locations for any previous exposure of sensitive credentials.
+9. Consider further improvements to API error classification and retry handling where appropriate.
 
 ---
 

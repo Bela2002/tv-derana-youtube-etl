@@ -49,3 +49,14 @@ previously collected statistics.
 One video can have many daily statistic records.
 
 videos (1) -------- (many) video_daily_stats
+
+## Test Database
+
+A separate PostgreSQL database named `tv_derana_etl_test` is used for database integration testing.
+
+This database allows tests to exercise real PostgreSQL operations, including table initialization, video upserts, daily-statistics upserts, foreign-key constraints, and transaction behaviour, without intentionally using the main `tv_derana_youtube` database for test data.
+
+Test database configuration is maintained separately through environment-based settings. Test records are identified and cleaned up by the integration tests where appropriate.
+
+The test database should be configured explicitly before running integration tests. Tests must not silently fall back to the main database.
+

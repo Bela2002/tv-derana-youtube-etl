@@ -112,3 +112,20 @@ Transform
 Load
     ↓
 PostgreSQL
+
+---
+
+## Why use API retries?
+
+A temporary network or server failure may prevent an API request from succeeding. Retrying selected temporary failures gives the request another opportunity to succeed without immediately terminating the operation.
+
+The project uses a limited number of retries with increasing delays. Permanent errors and quota-related issues are not automatically resolved by this mechanism.
+
+---
+
+## Why use a separate test database?
+
+Mock objects can test how application code calls database operations, but they cannot fully verify real PostgreSQL constraints and transaction behaviour.
+
+A separate test database, `tv_derana_etl_test`, allows integration tests to exercise actual PostgreSQL operations without intentionally using the main project database for test records.
+

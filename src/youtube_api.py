@@ -1,11 +1,23 @@
+
 from typing import Any
+import time
 
 import requests
 
 
 YOUTUBE_API_BASE_URL = "https://www.googleapis.com/youtube/v3"
-
 REQUEST_TIMEOUT_SECONDS = 30
+
+MAX_RETRIES = 3
+INITIAL_RETRY_DELAY_SECONDS = 1
+
+RETRYABLE_STATUS_CODES = {
+    429,
+    500,
+    502,
+    503,
+    504,
+}
 
 
 class YouTubeAPIError(Exception):
@@ -13,7 +25,7 @@ class YouTubeAPIError(Exception):
 
 
 class YouTubeAPIClient:
-    """Small client for the YouTube Data API v3."""
+    """Client for the YouTube Data API v3."""
 
     def __init__(self, api_key: str):
         self.api_key = api_key
@@ -23,53 +35,61 @@ class YouTubeAPIClient:
         endpoint: str,
         params: dict[str, Any],
     ) -> dict[str, Any]:
-        """
-        Send a GET request to the YouTube Data API.
-
-        The API key is added automatically.
-        """
-
         request_params = {
             **params,
             "key": self.api_key,
         }
-
         url = f"{YOUTUBE_API_BASE_URL}/{endpoint}"
 
-        try:
-            response = requests.get(
-                url,
-                params=request_params,
-                timeout=REQUEST_TIMEOUT_SECONDS,
-            )
-        except requests.RequestException as exc:
-            raise YouTubeAPIError(
-                f"Network error while calling YouTube API: {exc}"
-            ) from exc
-
-        if not response.ok:
+        for attempt in range(MAX_RETRIES + 1):
             try:
-                error_body = response.json()
-            except ValueError:
-                error_body = response.text
+                response = requests.get(
+                    url,
+                    params=request_params,
+                    timeout=REQUEST_TIMEOUT_SECONDS,
+                )
+            except requests.RequestException:
+                if attempt < MAX_RETRIES:
+                    delay = INITIAL_RETRY_DELAY_SECONDS * (2 ** attempt)
+                    time.sleep(delay)
+                    continue
 
+                raise YouTubeAPIError(
+                    "YouTube API request failed after retries "
+                    "because of a network error."
+                ) from None
+
+            if response.ok:
+                try:
+                    return response.json()
+                except ValueError:
+                    raise YouTubeAPIError(
+                        "YouTube API returned invalid JSON."
+                    ) from None
+
+            status_code = response.status_code
+
+            if status_code in RETRYABLE_STATUS_CODES:
+                if attempt < MAX_RETRIES:
+                    delay = INITIAL_RETRY_DELAY_SECONDS * (2 ** attempt)
+                    time.sleep(delay)
+                    continue
+
+                raise YouTubeAPIError(
+                    "YouTube API request failed after retries. "
+                    f"HTTP status: {status_code}."
+                )
+
+            # Do not include the raw response body or URL.
             raise YouTubeAPIError(
-                f"YouTube API request failed "
-                f"(HTTP {response.status_code}): {error_body}"
+                "YouTube API request failed. "
+                f"HTTP status: {status_code}. "
+                "Check API credentials, permissions, and parameters."
             )
 
-        try:
-            return response.json()
-        except ValueError as exc:
-            raise YouTubeAPIError(
-                "YouTube API returned invalid JSON."
-            ) from exc
+        raise YouTubeAPIError("YouTube API request failed.")
 
     def get_uploads_playlist_id(self, channel_id: str) -> str:
-        """
-        Get the playlist ID containing all videos uploaded by a channel.
-        """
-
         data = self._get(
             "channels",
             {
@@ -82,37 +102,27 @@ class YouTubeAPIClient:
 
         if not items:
             raise YouTubeAPIError(
-                f"No YouTube channel found for channel ID: {channel_id}"
+                "No YouTube channel was found for the configured channel ID."
             )
 
         try:
             return items[0]["contentDetails"]["relatedPlaylists"]["uploads"]
-        except KeyError as exc:
+        except (KeyError, TypeError):
             raise YouTubeAPIError(
                 "Could not find the channel's uploads playlist."
-            ) from exc
+            ) from None
 
     def get_playlist_video_ids(
         self,
         playlist_id: str,
         max_videos: int | None = None,
     ) -> list[str]:
-        """
-        Retrieve video IDs from an uploads playlist.
-
-        Handles API pagination automatically.
-
-        Args:
-            playlist_id: YouTube uploads playlist ID.
-            max_videos: Optional limit used during development/testing.
-        """
-
         video_ids: list[str] = []
         page_token: str | None = None
 
         while True:
             params: dict[str, Any] = {
-                "part": "contentDetails,snippet",
+                "part": "contentDetails",
                 "playlistId": playlist_id,
                 "maxResults": 50,
             }
@@ -129,11 +139,11 @@ class YouTubeAPIClient:
                 if video_id:
                     video_ids.append(video_id)
 
-                if (
-                    max_videos is not None
-                    and len(video_ids) >= max_videos
-                ):
-                    return video_ids[:max_videos]
+                    if (
+                        max_videos is not None
+                        and len(video_ids) >= max_videos
+                    ):
+                        return video_ids[:max_videos]
 
             page_token = data.get("nextPageToken")
 
@@ -146,13 +156,6 @@ class YouTubeAPIClient:
         self,
         video_ids: list[str],
     ) -> list[dict[str, Any]]:
-        """
-        Retrieve details/statistics for a list of video IDs.
-
-        YouTube accepts multiple video IDs in one videos.list request,
-        so IDs are processed in batches of 50.
-        """
-
         all_videos: list[dict[str, Any]] = []
 
         for start in range(0, len(video_ids), 50):
