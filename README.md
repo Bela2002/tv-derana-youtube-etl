@@ -46,24 +46,51 @@ YouTube Data API
 - Secure environment variables
 - Automated daily execution
 - Unit tests
+- Retry handling for transient API failures
+- Secure API error handling
+- PostgreSQL integration tests
+- Main pipeline tests
+- Test database isolation
+
+## API Reliability
+
+- Transient HTTP errors and request failures are handled using a retry mechanism.
+- Retry delays increase exponentially between attempts.
+- Retryable HTTP status codes include 429, 500, 502, 503 and 504.
+- Permanent HTTP errors are not retried unnecessarily.
+- Custom API error messages avoid exposing API keys through raw request URLs or response bodies.
+
+The retry mechanism improves resilience to temporary API failures. It does not guarantee recovery from quota exhaustion or other permanent errors.
 
 ## Project Structure
 
-```text
-src/
-    config.py
-    logger.py
-    youtube_api.py
-    extract.py
-    transform.py
-    database.py
-    load.py
-    main.py
+tv-derana-youtube-etl/
+├── src/
+│   ├── config.py
+│   ├── logger.py
+│   ├── youtube_api.py
+│   ├── extract.py
+│   ├── transform.py
+│   ├── database.py
+│   ├── load.py
+│   └── main.py
+├── tests/
+│   ├── test_config.py
+│   ├── test_database_integration.py
+│   ├── test_extract.py
+│   ├── test_load.py
+│   ├── test_main.py
+│   ├── test_transform.py
+│   └── test_youtube_api.py
+├── docs/
+├── logs/
+├── .env.example
+├── .gitignore
+├── check_channel_count.py
+├── requirements.txt
+├── run_etl.bat
+└── README.md
 
-tests/
-docs/
-logs/
-```
 ## Setup
 
 1. Clone the repository
@@ -119,11 +146,29 @@ pip install -r requirements.txt
 python -m src.main
 ```
 
-7. Run tests
+## Testing
 
-```
+Run the test suite from the project root:
+
+```powershell
 pytest
 ```
+
+The test suite covers:
+
+- Configuration validation
+- YouTube API requests, retries and error handling
+- Data extraction and transformation
+- Database loading and duplicate handling
+- Main ETL pipeline execution
+- PostgreSQL integration tests using a dedicated test database
+
+The integration tests verify database operations against PostgreSQL, including upserts, daily snapshots, foreign-key constraints and transaction rollback behaviour.
+
+The latest recorded test run passed **39 tests in 7.55 seconds**. Test results may vary as the project changes.
+
+**Important:** Configure the dedicated test database before running the integration tests. Avoid running tests against a database containing production data.
+
 ## Security
 
 API keys and database passwords are stored in `.env`.
@@ -169,7 +214,7 @@ The ETL pipeline was tested through both manual and scheduled execution.
 
 ### Test Execution
 
-<img width="1272" height="802" alt="Screenshot 2026-10-07 045711" src="https://github.com/user-attachments/assets/5a3ce858-9f79-434d-a060-18ae5f3ec555" />
+<img width="1242" height="870" alt="image" src="https://github.com/user-attachments/assets/efe316ad-7bb8-4d1e-8ad5-7f942be5a817" />
 
 ### Automated Execution
 - Windows Task Scheduler was configured to execute the ETL pipeline daily at 8:00 AM.
